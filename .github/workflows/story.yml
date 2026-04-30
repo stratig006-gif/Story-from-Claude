@@ -17,7 +17,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install google-genai anthropic requests
+       run: pip install google-genai requests 
 
       - name: Run pipeline
         env:
