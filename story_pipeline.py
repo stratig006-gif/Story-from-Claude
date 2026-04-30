@@ -1,33 +1,37 @@
 import os
 import time
+import anthropic
 import requests
-from google import genai
 
-GEMINI_KEY = os.environ["GEMINI_API_KEY"]
+CLAUDE_KEY = os.environ["ANTHROPIC_API_KEY"]
 TG_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TG_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-def call_gemini_with_retry(client, prompt, retries=3, delay=10):
+def call_claude_with_retry(client, max_tokens, messages, retries=3, delay=10):
     for attempt in range(retries):
         try:
-            response = client.models.generate_content(
-                model="gemini-pro",
-                contents=prompt
+            response = client.messages.create(
+                model="claude-opus-4-5",
+                max_tokens=max_tokens,
+                messages=messages
             )
-            return response.text.strip()
+            return response.content[0].text
         except Exception as e:
             print(f"Попытка {attempt + 1} не удалась: {e}")
             if attempt < retries - 1:
-                print(f"Жду {delay} секунд...")
+                print(f"Жду {delay} секунд перед повтором...")
                 time.sleep(delay)
             else:
                 raise
 
 def generate_prompt_and_story():
-    client = genai.Client(api_key=GEMINI_KEY)
+    client = anthropic.Anthropic(api_key=CLAUDE_KEY)
 
     print("Генерирую промт...")
-    story_prompt = call_gemini_with_retry(client, """
+    story_prompt = call_claude_with_retry(
+        client,
+        max_tokens=300,
+        messages=[{"role": "user", "content": """
 Сгенерируй творческий промт для короткого рассказа (500-800 слов).
 Параметры:
 - Жанр: фантастика, мистика или приключения (выбери случайно)
@@ -35,14 +39,18 @@ def generate_prompt_and_story():
 - Главный герой: обычный человек в необычных обстоятельствах
 - Язык рассказа: русский
 Верни ТОЛЬКО сам промт, без пояснений.
-    """)
+        """}]
+    )
 
-    print(f"Промт готов: {story_prompt}\n")
-    print("Пауза 5 секунд...")
-    time.sleep(5)
+    print("Пауза перед следующим запросом...")
+    time.sleep(5)  # пауза 5 секунд между запросами
 
     print("Пишу рассказ...")
-    story = call_gemini_with_retry(client, story_prompt)
+    story = call_claude_with_retry(
+        client,
+        max_tokens=2000,
+        messages=[{"role": "user", "content": story_prompt}]
+    )
 
     return story_prompt, story
 
@@ -55,11 +63,12 @@ def send_to_telegram(text):
             "text": chunk,
             "parse_mode": "Markdown"
         })
-        time.sleep(1)
+        time.sleep(1)  # пауза между частями если рассказ длинный
 
 if __name__ == "__main__":
     print("Запускаю конвейер...")
     story_prompt, story = generate_prompt_and_story()
+    print(f"Промт: {story_prompt}\n")
     print("Отправляю в Telegram...")
     send_to_telegram(f"📖 *Новый рассказ*\n\n*Промт:* _{story_prompt}_\n\n---\n\n{story}")
     print("Готово!")
