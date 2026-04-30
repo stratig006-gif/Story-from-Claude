@@ -11,7 +11,7 @@ def call_gemini_with_retry(client, prompt, retries=3, delay=10):
     for attempt in range(retries):
         try:
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="model/gemini-1.5-flash",
                 contents=prompt
             )
             return response.text.strip()
