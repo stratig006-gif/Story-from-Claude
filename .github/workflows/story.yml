@@ -2,8 +2,8 @@ name: Story Pipeline
 
 on:
   schedule:
-    - cron: '0 */3 * * *'   # каждые 3 часа
-  workflow_dispatch:          # ручной запуск для теста
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
 
 jobs:
   run-story:
@@ -17,7 +17,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-       run: pip install google-genai requests 
+        run: pip install google-genai requests
 
       - name: Run pipeline
         env:
