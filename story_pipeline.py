@@ -21,7 +21,7 @@ PROMPT_PARAMS = """
 def generate_prompt_with_gemini():
     client = genai.Client(api_key=GEMINI_KEY)
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         contents=PROMPT_PARAMS
     )
     return response.text.strip()
@@ -29,7 +29,7 @@ def generate_prompt_with_gemini():
 def generate_story_with_claude(story_prompt):
     client = anthropic.Anthropic(api_key=CLAUDE_KEY)
     message = client.messages.create(
-        model="claude-opus-4-5",
+        model="claude-sonnet-4-6",
         max_tokens=2000,
         messages=[{"role": "user", "content": story_prompt}]
     )
