@@ -1,15 +1,13 @@
 import os
-import google.generativeai as genai
+from google import genai
 import anthropic
 import requests
 
-# Ключи из переменных окружения
 GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 CLAUDE_KEY = os.environ["ANTHROPIC_API_KEY"]
 TG_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TG_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-# --- Параметры промта (настраивай под себя) ---
 PROMPT_PARAMS = """
 Сгенерируй творческий промт для написания короткого рассказа (500-800 слов).
 Параметры:
@@ -21,9 +19,11 @@ PROMPT_PARAMS = """
 """
 
 def generate_prompt_with_gemini():
-    genai.configure(api_key=GEMINI_KEY)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(PROMPT_PARAMS)
+    client = genai.Client(api_key=GEMINI_KEY)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=PROMPT_PARAMS
+    )
     return response.text.strip()
 
 def generate_story_with_claude(story_prompt):
@@ -36,7 +36,6 @@ def generate_story_with_claude(story_prompt):
     return message.content[0].text
 
 def send_to_telegram(text):
-    # Telegram ограничивает сообщения до 4096 символов
     chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     for chunk in chunks:
