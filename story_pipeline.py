@@ -58,12 +58,25 @@ def generate_story_with_claude(story_prompt):
     message = client.messages.create(
         model="claude-opus-4-6",
         max_tokens=2500,
-        system="Ты — мастер семейной комедии и душевных историй. Пиши в стиле современной юмористической прозы.", # Добавили системную роль
-        messages=[{"role": "user", "content": f"Напиши рассказ по этому промту: {story_prompt}"}]
-    )
-    return message.content[0].text
+        system="Ты — мастер семейной комедии и душевных историй. Пиши в стиле современной юмористической прозы.",
+        messages=[{"role": "user", "content": f"""Напиши рассказ по этому промту: {story_prompt}
 
-def send_to_telegram(text, image_bytes, story_prompt):
+Формат ответа:
+ЗАГОЛОВОК: [придумай красивый вовлекающий заголовок рассказа]
+РАССКАЗ:
+[текст рассказа]"""}]
+    )
+    raw = message.content[0].text
+    # Разбираем заголовок и текст
+    if "ЗАГОЛОВОК:" in raw and "РАССКАЗ:" in raw:
+        title = raw.split("ЗАГОЛОВОК:")[1].split("РАССКАЗ:")[0].strip()
+        story = raw.split("РАССКАЗ:")[1].strip()
+    else:
+        title = "Новый рассказ"
+        story = raw
+    return title, story
+
+def send_to_telegram(text, image_bytes, title):
     """Отправка фото и текста раздельными сообщениями"""
     
     # 1. Отправляем только картинку
@@ -85,7 +98,7 @@ def send_to_telegram(text, image_bytes, story_prompt):
 
     # 2. Отправляем текст рассказа (с разбивкой на части, если он длинный)
     # Формируем текст сообщения
-    full_message = f"📖 *{story_prompt.upper()}*\n\n---\n\n{text}"
+    full_message = f"📖 *{title}*\n\n{text}"
     
     chunks = [full_message[i:i+4000] for i in range(0, len(full_message), 4000)]
     msg_url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
