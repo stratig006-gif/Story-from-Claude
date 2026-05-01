@@ -5,6 +5,9 @@ on:
     - cron: '0 */3 * * *'   # каждые 3 часа
   workflow_dispatch:          # запуск вручную
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   run-story:
     runs-on: ubuntu-latest
