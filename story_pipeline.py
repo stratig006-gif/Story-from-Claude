@@ -36,21 +36,25 @@ def generate_prompt_with_gemini():
 
 
 def generate_cover_with_gemini(story_prompt):
-    """Генерация обложки с помощью Gemini Image"""
+    """Генерация обложки через generate_content с модальностью Image"""
     client = genai.Client(api_key=GEMINI_KEY)
 
     image_prompt = f"Professional book cover illustration, cinematic lighting, high detail, no text: {story_prompt}"
 
     print("Рисую обложку...")
-    response = client.models.generate_image(
-        model="gemini-3-flash-image",
-        prompt=image_prompt,
-        config=types.GenerateImageConfig(
-            number_of_images=1,
-            output_mime_type="image/jpeg"
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-preview-05-20",
+        contents=image_prompt,
+        config=types.GenerateContentConfig(
+            response_modalities=["IMAGE", "TEXT"]
         )
     )
-    return response.generated_images[0].image_bytes
+
+    for part in response.candidates[0].content.parts:
+        if part.inline_data is not None:
+            return part.inline_data.data
+
+    raise RuntimeError("Gemini не вернул изображение")
 
 
 def generate_story_with_claude(story_prompt):
