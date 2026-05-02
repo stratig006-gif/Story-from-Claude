@@ -1,7 +1,7 @@
 import os
 import traceback
+import urllib.parse
 from google import genai
-from google.genai import types
 import anthropic
 import requests
 
@@ -28,6 +28,7 @@ PROMPT_PARAMS = """
 
 
 def generate_prompt_with_gemini():
+    """Генерация промта для рассказа через Gemini"""
     client = genai.Client(api_key=GEMINI_KEY)
     response = client.models.generate_content(
         model="gemini-2.5-flash",
@@ -36,30 +37,63 @@ def generate_prompt_with_gemini():
     return response.text.strip()
 
 
-def generate_cover_with_gemini(story_prompt):
-    """Генерация обложки через generate_content с модальностью Image"""
+def shorten_prompt_for_image(story_prompt):
+    """Сжимаем длинный промт рассказа в короткое описание для картинки через Gemini"""
     client = genai.Client(api_key=GEMINI_KEY)
-
-    image_prompt = f"Professional book cover illustration, cinematic lighting, high detail, no text: {story_prompt}"
-
-    print("Рисую обложку...")
     response = client.models.generate_content(
-        model="gemini-2.5-flash-image",
-        contents=image_prompt,
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE", "TEXT"]
-        )
+        model="gemini-2.5-flash",
+        contents=f"""На основе этого описания рассказа сформулируй краткий промт (не более 40 английских слов) для генерации обложки книги. 
+Опиши только визуальную сцену: персонажей, обстановку, настроение. Без текста на изображении. 
+Верни ТОЛЬКО английский промт, без вступлений.
+
+Описание рассказа:
+{story_prompt}"""
+    )
+    return response.text.strip()
+
+
+def generate_cover_with_pollinations(story_prompt):
+    """Генерация обложки через бесплатный Pollinations.ai (без API-ключа)"""
+    print("Сжимаю промт для обложки...")
+    short_prompt = shorten_prompt_for_image(story_prompt)
+    print(f"Промт обложки: {short_prompt[:120]}...")
+
+    # Добавляем стилевые модификаторы для качественной обложки
+    full_prompt = (
+        f"Professional book cover illustration, cinematic lighting, "
+        f"warm cozy atmosphere, high detail, no text, no letters: {short_prompt}"
     )
 
-    for part in response.candidates[0].content.parts:
-        if part.inline_data is not None:
-            return part.inline_data.data
+    # Кодируем промт в URL
+    encoded_prompt = urllib.parse.quote(full_prompt)
 
-    raise RuntimeError("Gemini не вернул изображение")
+    # Pollinations.ai endpoint - параметры:
+    # width/height - размеры (книжная обложка 768x1024)
+    # nologo=true - убирает водяной знак
+    # enhance=true - улучшает промт автоматически
+    # model=flux - используем Flux (лучшее качество из бесплатных)
+    url = (
+        f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+        f"?width=768&height=1024&nologo=true&enhance=true&model=flux"
+    )
+
+    print("Рисую обложку через Pollinations.ai...")
+    response = requests.get(url, timeout=120)
+
+    if response.status_code != 200:
+        raise RuntimeError(
+            f"Pollinations вернул ошибку {response.status_code}: {response.text[:200]}"
+        )
+
+    if not response.content or len(response.content) < 1000:
+        raise RuntimeError("Pollinations вернул пустое или некорректное изображение")
+
+    print(f"Обложка получена ({len(response.content) // 1024} KB)")
+    return response.content
 
 
 def generate_story_with_claude(story_prompt):
-    """Генерация рассказа с отдельным заголовком"""
+    """Генерация рассказа с отдельным заголовком через Claude"""
     client = anthropic.Anthropic(api_key=CLAUDE_KEY)
     message = client.messages.create(
         model="claude-sonnet-4-6",
@@ -122,7 +156,7 @@ if __name__ == "__main__":
         story_prompt = generate_prompt_with_gemini()
 
         print("2. Рисую обложку...")
-        cover_image = generate_cover_with_gemini(story_prompt)
+        cover_image = generate_cover_with_pollinations(story_prompt)
 
         print("3. Пишу рассказ через Claude...")
         story_title, story = generate_story_with_claude(story_prompt)
