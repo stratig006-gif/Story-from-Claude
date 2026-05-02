@@ -58,7 +58,7 @@ def shorten_prompt_for_image(story_prompt):
 
 
 def generate_cover_with_pollinations(story_prompt):
-    """Генерация обложки через бесплатный Pollinations.ai"""
+    """Генерация обложки через Pollinations.ai, возвращает (bytes, url)"""
     print("Сжимаю промт для обложки...")
     short_prompt = shorten_prompt_for_image(story_prompt)
     print(f"Промт обложки: {short_prompt[:120]}...")
@@ -69,13 +69,13 @@ def generate_cover_with_pollinations(story_prompt):
     )
 
     encoded_prompt = urllib.parse.quote(full_prompt)
-    url = (
+    image_url = (
         f"https://image.pollinations.ai/prompt/{encoded_prompt}"
         f"?width=1024&height=768&nologo=true&enhance=true&model=flux"
     )
 
     print("Рисую обложку через Pollinations.ai...")
-    response = requests.get(url, timeout=120)
+    response = requests.get(image_url, timeout=120)
 
     if response.status_code != 200:
         raise RuntimeError(f"Pollinations вернул ошибку {response.status_code}")
@@ -84,7 +84,8 @@ def generate_cover_with_pollinations(story_prompt):
         raise RuntimeError("Pollinations вернул пустое изображение")
 
     print(f"Обложка получена ({len(response.content) // 1024} KB)")
-    return response.content
+    # Возвращаем и байты (для Telegram), и URL (для Telegraph)
+    return response.content, image_url
 
 
 def generate_story_with_claude(story_prompt):
@@ -113,34 +114,15 @@ def generate_story_with_claude(story_prompt):
     return title, story
 
 
-def publish_to_telegraph(title, story, image_bytes):
-    """Публикуем статью на Telegraph и возвращаем ссылку"""
+def publish_to_telegraph(title, story, image_url):
+    """Публикуем статью на Telegraph, картинку вставляем по прямому URL Pollinations"""
 
-    # 1. Загружаем картинку на Telegraph
-    print("Загружаю обложку на Telegraph...")
-    upload_resp = requests.post(
-        "https://telegra.ph/upload",
-        files={"file": ("cover.jpg", image_bytes, "image/jpeg")},
-        timeout=60
-    )
-    if upload_resp.status_code != 200:
-        raise RuntimeError(f"Ошибка загрузки фото на Telegraph: {upload_resp.status_code}")
-
-    img_path = upload_resp.json()[0]["src"]
-    img_url = f"https://telegra.ph{img_path}"
-    print(f"Фото загружено: {img_url}")
-
-    # 2. Формируем контент статьи в формате Telegraph Node
-    # Разбиваем рассказ на абзацы
     paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
 
-    content = [
-        {"tag": "img", "attrs": {"src": img_url}},
-    ]
+    content = [{"tag": "img", "attrs": {"src": image_url}}]
     for para in paragraphs:
         content.append({"tag": "p", "children": [para]})
 
-    # 3. Создаём страницу на Telegraph
     print("Публикую на Telegraph...")
     page_resp = requests.post(
         "https://api.telegra.ph/createPage",
@@ -193,13 +175,13 @@ if __name__ == "__main__":
         story_prompt = generate_prompt_with_claude()
 
         print("2. Рисую обложку...")
-        cover_image = generate_cover_with_pollinations(story_prompt)
+        cover_image, cover_url = generate_cover_with_pollinations(story_prompt)
 
         print("3. Пишу рассказ через Claude...")
         story_title, story = generate_story_with_claude(story_prompt)
 
         print("4. Публикую на Telegraph...")
-        telegraph_url = publish_to_telegraph(story_title, story, cover_image)
+        telegraph_url = publish_to_telegraph(story_title, story, cover_url)
 
         print("5. Отправляю в Telegram-канал...")
         send_to_telegram(story_title, cover_image, telegraph_url)
