@@ -43,7 +43,7 @@ def generate_cover_with_gemini(story_prompt):
 
     print("Рисую обложку...")
     response = client.models.generate_content(
-        model="gemini-2.5-flash-image-preview",
+        model="models/gemini-2.5-flash",
         contents=image_prompt,
         config=types.GenerateContentConfig(
             response_modalities=["IMAGE", "TEXT"]
