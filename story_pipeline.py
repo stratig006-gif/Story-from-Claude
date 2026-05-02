@@ -1,4 +1,5 @@
 import os
+import traceback
 from google import genai
 from google.genai import types
 import anthropic
@@ -43,7 +44,7 @@ def generate_cover_with_gemini(story_prompt):
 
     print("Рисую обложку...")
     response = client.models.generate_content(
-        model="gemini-2.5-flash-image-preview",
+        model="gemini-2.5-flash-image",
         contents=image_prompt,
         config=types.GenerateContentConfig(
             response_modalities=["IMAGE", "TEXT"]
@@ -61,8 +62,8 @@ def generate_story_with_claude(story_prompt):
     """Генерация рассказа с отдельным заголовком"""
     client = anthropic.Anthropic(api_key=CLAUDE_KEY)
     message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=2500,
+        model="claude-sonnet-4-6",
+        max_tokens=16000,
         system="Ты — мастер семейной комедии и душевных историй. Пиши в стиле современной юмористической прозы.",
         messages=[{"role": "user", "content": f"""Напиши рассказ по этому промту: {story_prompt}
 
@@ -133,3 +134,4 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"❌ Ошибка: {e}")
+        traceback.print_exc()
