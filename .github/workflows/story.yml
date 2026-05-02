@@ -3,10 +3,13 @@ name: Story Pipeline
 on:
   schedule:
     - cron: '0 */3 * * *'   # каждые 3 часа
-  workflow_dispatch:          # запуск вручную
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: write   # нужно чтобы коммитить файлы обратно в репо
 
 jobs:
   run-story:
@@ -28,5 +31,16 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAPH_TOKEN: ${{ secrets.TELEGRAPH_TOKEN }}
         run: python story_pipeline.py
+
+      - name: Commit and push site updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          if git diff --staged --quiet; then
+            echo "Нет изменений для коммита"
+          else
+            git commit -m "New story: $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
