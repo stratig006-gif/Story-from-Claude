@@ -102,7 +102,7 @@ def generate_story_with_claude(story_prompt):
     client = anthropic.Anthropic(api_key=CLAUDE_KEY)
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=4000,
+        max_tokens=10000,
         system="Ты — мастер семейной комедии и душевных историй. Пиши в стиле современной юмористической прозы.",
         messages=[{"role": "user", "content": f"""Напиши рассказ по этому промту: {story_prompt}
 
