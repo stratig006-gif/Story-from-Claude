@@ -9,6 +9,7 @@ GEMINI_KEY = os.environ["GEMINI_API_KEY"]
 CLAUDE_KEY = os.environ["ANTHROPIC_API_KEY"]
 TG_TOKEN = os.environ["TELEGRAM_TOKEN"]
 TG_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]  # @yin_yan_psychology
+TELEGRAPH_TOKEN = os.environ["TELEGRAPH_TOKEN"]
 
 PROMPT_PARAMS = """
 Сгенерируй детальный промт для написания юмористического рассказа о счастливой семье (не более 2000 слов).
@@ -43,7 +44,7 @@ def generate_prompt_with_gemini():
 
 
 def generate_cover_with_gemini(story_prompt):
-    """Генерация обложки через Gemini Image (gemini-2.5-flash-image)"""
+    """Генерация обложки через Gemini Image"""
     client = genai.Client(api_key=GEMINI_KEY)
 
     image_prompt = (
@@ -95,42 +96,91 @@ def generate_story_with_claude(story_prompt):
     return title, story
 
 
-def send_to_telegram(title, image_bytes, story):
-    """Отправляем: фото с заголовком, затем текст рассказа"""
-    base_url = f"https://api.telegram.org/bot{TG_TOKEN}"
-
-    # 1. Фото с заголовком в подписи
-    print("Отправляю фото...")
-    photo_resp = requests.post(
-        f"{base_url}/sendPhoto",
-        data={
-            "chat_id": TG_CHAT_ID,
-            "caption": f"📖 *{title}*",
-            "parse_mode": "Markdown"
-        },
-        files={"photo": ("cover.jpg", image_bytes, "image/jpeg")},
+def upload_image_to_telegraph(image_bytes):
+    """Загружаем картинку на Telegraph (для использования в статье)"""
+    print("Загружаю обложку на Telegraph...")
+    resp = requests.post(
+        "https://telegra.ph/upload",
+        files={"file": ("cover.jpg", image_bytes, "image/jpeg")},
         timeout=60
     )
-    if photo_resp.status_code != 200:
-        print(f"Ошибка отправки фото: {photo_resp.text[:200]}")
+    if resp.status_code == 200:
+        data = resp.json()
+        if isinstance(data, list) and data:
+            img_url = f"https://telegra.ph{data[0]['src']}"
+            print(f"Фото загружено: {img_url}")
+            return img_url
 
-    # 2. Текст рассказа — разбиваем на части по 4000 символов
-    print("Отправляю текст рассказа...")
-    chunks = [story[i:i+4000] for i in range(0, len(story), 4000)]
-    for i, chunk in enumerate(chunks):
-        resp = requests.post(
-            f"{base_url}/sendMessage",
-            json={
-                "chat_id": TG_CHAT_ID,
-                "text": chunk,
-                "parse_mode": "Markdown"
-            },
-            timeout=60
-        )
-        if resp.status_code != 200:
-            print(f"Ошибка отправки части {i+1}: {resp.text[:200]}")
+    # Запасной вариант — catbox.moe
+    print("Telegraph не принял фото, пробую catbox.moe...")
+    resp = requests.post(
+        "https://catbox.moe/user/api.php",
+        data={"reqtype": "fileupload"},
+        files={"fileToUpload": ("cover.jpg", image_bytes, "image/jpeg")},
+        timeout=60
+    )
+    if resp.status_code == 200 and resp.text.startswith("https://"):
+        url = resp.text.strip()
+        print(f"Фото загружено на catbox: {url}")
+        return url
 
-    print(f"✅ Отправлено {len(chunks)} часть(ей) текста.")
+    raise RuntimeError("Не удалось загрузить картинку")
+
+
+def publish_to_telegraph(title, story, image_bytes):
+    """Публикуем статью на Telegraph"""
+
+    img_url = upload_image_to_telegraph(image_bytes)
+
+    paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
+    content = [{"tag": "img", "attrs": {"src": img_url}}]
+    for para in paragraphs:
+        content.append({"tag": "p", "children": [para]})
+
+    print("Публикую на Telegraph...")
+    page_resp = requests.post(
+        "https://api.telegra.ph/createPage",
+        json={
+            "access_token": TELEGRAPH_TOKEN,
+            "title": title,
+            "author_name": "Инь и Янь",
+            "content": content,
+            "return_content": False
+        },
+        timeout=60
+    )
+
+    page_data = page_resp.json()
+    if not page_data.get("ok"):
+        raise RuntimeError(f"Ошибка создания страницы Telegraph: {page_data}")
+
+    page_url = page_data["result"]["url"]
+    print(f"Telegraph статья: {page_url}")
+    return page_url
+
+
+def send_to_telegram(title, image_bytes, telegraph_url):
+    """Отправляем одно сообщение: фото + заголовок + ссылка на Telegraph"""
+
+    caption = (
+        f"📖 *{title}*\n\n"
+        f"Читать рассказ полностью 👇\n"
+        f"{telegraph_url}"
+    )
+
+    photo_url = f"https://api.telegram.org/bot{TG_TOKEN}/sendPhoto"
+    files = {"photo": ("cover.jpg", image_bytes, "image/jpeg")}
+    data = {
+        "chat_id": TG_CHAT_ID,
+        "caption": caption,
+        "parse_mode": "Markdown"
+    }
+
+    resp = requests.post(photo_url, data=data, files=files, timeout=60)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Ошибка отправки в Telegram: {resp.text[:200]}")
+
+    print("✅ Пост отправлен в Telegram-канал.")
 
 
 if __name__ == "__main__":
@@ -144,8 +194,11 @@ if __name__ == "__main__":
         print("3. Пишу рассказ через Claude...")
         story_title, story = generate_story_with_claude(story_prompt)
 
-        print("4. Отправляю в Telegram-канал...")
-        send_to_telegram(story_title, cover_image, story)
+        print("4. Публикую на Telegraph...")
+        telegraph_url = publish_to_telegraph(story_title, story, cover_image)
+
+        print("5. Отправляю в Telegram-канал...")
+        send_to_telegram(story_title, cover_image, telegraph_url)
 
         print("✅ Готово!")
 
