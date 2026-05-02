@@ -1,7 +1,9 @@
 import os
+import io
 import traceback
 from google import genai
 from google.genai import types
+from PIL import Image
 import anthropic
 import requests
 
@@ -70,6 +72,34 @@ def generate_cover_with_gemini(story_prompt):
     raise RuntimeError("Gemini не вернул изображение")
 
 
+def compress_image(image_bytes, max_kb=400, max_dimension=1200):
+    """Сжимаем картинку до приемлемого размера для Telegraph/Telegram"""
+    img = Image.open(io.BytesIO(image_bytes))
+
+    # Конвертируем в RGB если нужно (для JPEG)
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    # Уменьшаем размер если картинка слишком большая
+    if max(img.size) > max_dimension:
+        img.thumbnail((max_dimension, max_dimension), Image.LANCZOS)
+
+    # Сжимаем с подбором качества
+    quality = 90
+    while quality >= 50:
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=quality, optimize=True)
+        size_kb = len(buffer.getvalue()) // 1024
+        if size_kb <= max_kb:
+            print(f"Сжато: {size_kb} KB (quality={quality})")
+            return buffer.getvalue()
+        quality -= 10
+
+    # Если совсем не получилось — возвращаем то что есть
+    print(f"Финальный размер: {size_kb} KB")
+    return buffer.getvalue()
+
+
 def generate_story_with_claude(story_prompt):
     """Генерация рассказа с заголовком через Claude"""
     client = anthropic.Anthropic(api_key=CLAUDE_KEY)
@@ -97,26 +127,36 @@ def generate_story_with_claude(story_prompt):
 
 
 def upload_image_to_telegraph(image_bytes):
-    """Загружаем картинку на Telegraph (для использования в статье)"""
+    """Загружаем картинку на Telegraph"""
+    print("Сжимаю обложку для загрузки...")
+    compressed = compress_image(image_bytes)
+
     print("Загружаю обложку на Telegraph...")
     resp = requests.post(
         "https://telegra.ph/upload",
-        files={"file": ("cover.jpg", image_bytes, "image/jpeg")},
+        files={"file": ("cover.jpg", compressed, "image/jpeg")},
         timeout=60
     )
+
     if resp.status_code == 200:
-        data = resp.json()
-        if isinstance(data, list) and data:
-            img_url = f"https://telegra.ph{data[0]['src']}"
-            print(f"Фото загружено: {img_url}")
-            return img_url
+        try:
+            data = resp.json()
+            if isinstance(data, list) and data:
+                img_url = f"https://telegra.ph{data[0]['src']}"
+                print(f"Фото загружено: {img_url}")
+                return img_url
+            print(f"Telegraph вернул неожиданный ответ: {data}")
+        except Exception as e:
+            print(f"Ошибка парсинга ответа Telegraph: {e}, тело: {resp.text[:200]}")
+    else:
+        print(f"Telegraph ответил {resp.status_code}: {resp.text[:200]}")
 
     # Запасной вариант — catbox.moe
-    print("Telegraph не принял фото, пробую catbox.moe...")
+    print("Пробую catbox.moe...")
     resp = requests.post(
         "https://catbox.moe/user/api.php",
         data={"reqtype": "fileupload"},
-        files={"fileToUpload": ("cover.jpg", image_bytes, "image/jpeg")},
+        files={"fileToUpload": ("cover.jpg", compressed, "image/jpeg")},
         timeout=60
     )
     if resp.status_code == 200 and resp.text.startswith("https://"):
@@ -124,6 +164,7 @@ def upload_image_to_telegraph(image_bytes):
         print(f"Фото загружено на catbox: {url}")
         return url
 
+    print(f"Catbox ответил {resp.status_code}: {resp.text[:200]}")
     raise RuntimeError("Не удалось загрузить картинку")
 
 
@@ -160,7 +201,10 @@ def publish_to_telegraph(title, story, image_bytes):
 
 
 def send_to_telegram(title, image_bytes, telegraph_url):
-    """Отправляем одно сообщение: фото + заголовок + ссылка на Telegraph"""
+    """Одно сообщение: фото + заголовок + ссылка"""
+
+    # Сжимаем картинку и для Telegram (на всякий случай)
+    compressed = compress_image(image_bytes, max_kb=1000, max_dimension=1280)
 
     caption = (
         f"📖 *{title}*\n\n"
@@ -169,7 +213,7 @@ def send_to_telegram(title, image_bytes, telegraph_url):
     )
 
     photo_url = f"https://api.telegram.org/bot{TG_TOKEN}/sendPhoto"
-    files = {"photo": ("cover.jpg", image_bytes, "image/jpeg")}
+    files = {"photo": ("cover.jpg", compressed, "image/jpeg")}
     data = {
         "chat_id": TG_CHAT_ID,
         "caption": caption,
