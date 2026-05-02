@@ -127,7 +127,7 @@ def publish_to_telegraph(title, story, image_url):
     page_resp = requests.post(
         "https://api.telegra.ph/createPage",
         json={
-            "access_token": "b968da509bb76866c35425099bc0989a5ec3b32997d55286c657e6a1e3b",
+            "access_token": "131f66a6538d64493aeb1a694a1e3872e93a37bd2a792a05404a8db37ac4",
             "title": title,
             "author_name": "Инь и Янь",
             "content": content,
